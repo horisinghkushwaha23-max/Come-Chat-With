@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pink Love Secure Chat</title>
+    <style>
+        body { 
+            font-family: 'Segoe UI', sans-serif; 
+            background: url('https://img.freepik.com/free-vector/hand-drawn-valentine-s-day-background_23-2148811802.jpg') center center fixed; 
+            background-size: cover; 
+            display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; 
+        }
+        .box { background: rgba(255, 255, 255, 0.95); padding: 15px; border-radius: 20px; width: 92%; max-width: 400px; text-align: center; box-shadow: 0 10px 30px rgba(255, 105, 180, 0.3); display: flex; flex-direction: column; }
+        input, select { width: 100%; padding: 12px; margin: 6px 0; border-radius: 15px; border: 2px solid #ffb6c1; box-sizing: border-box; outline: none; }
+        button { background: #ff1493; color: white; border: none; cursor: pointer; font-weight: bold; padding: 10px; border-radius: 15px; }
+        
+        #chatSection { display: none; height: 85vh; }
+        
+        #messages { flex: 1; overflow-y: auto; padding: 10px; background: rgba(255, 240, 245, 0.9); border-radius: 15px; margin-bottom: 8px; gap: 8px; display: flex; flex-direction: column; text-align: left; }
+        .msg-container { padding: 8px 12px; border-radius: 12px; max-width: 75%; word-wrap: break-word; font-size: 14px; position: relative; }
+        .sent { background: #ff69b4; color: white; align-self: flex-end; border-top-right-radius: 2px; }
+        .received { background: #fff; color: #333; border: 1px solid #ffb6c1; align-self: flex-start; border-top-left-radius: 2px; }
+        
+        img, video { max-width: 180px; border-radius: 8px; display: block; margin-top: 4px; }
+        .msg-info { font-size: 10px; font-weight: bold; margin-bottom: 2px; }
+        
+        .chat-footer { display: flex; gap: 5px; align-items: center; background: #fff; padding: 5px; border-radius: 25px; border: 2px solid #ffb6c1; }
+        .chat-footer input[type="text"] { border: none; margin: 0; padding: 8px 12px; background: transparent; }
+        .icon-btn { background: none; border: none; font-size: 20px; cursor: pointer; padding: 0 5px; width: auto; }
+
+        #videoPreviewContainer {
+            display: none;
+            position: relative;
+            background: #000;
+            border-radius: 15px;
+            overflow: hidden;
+            margin-bottom: 8px;
+            max-height: 220px;
+            text-align: center;
+        }
+        #videoPreview {
+            width: 100%;
+            max-height: 180px;
+            object-fit: contain;
+        }
+        .wa-cancel-btn {
+            position: absolute;
+            top: 8px;
+            left: 8px;
+            background: rgba(0, 0, 0, 0.6);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            font-size: 14px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .wa-send-btn {
+            background: #25d366;
+            color: white;
+            border: none;
+            padding: 6px 16px;
+            border-radius: 15px;
+            cursor: pointer;
+            font-weight: bold;
+            margin: 4px 0 8px 0;
+            width: auto;
+        }
+    </style>
+</head>
+<body>
+
+<div id="authBox" class="box">
+    <h2 id="authTitle" style="color: #ff1493;">Login</h2>
+    <input type="text" id="username" placeholder="Username">
+    <input type="password" id="password" placeholder="Password">
+    <button id="authBtn" onclick="handleAuth()">Enter Chat</button>
+    <p id="toggleText" style="cursor:pointer; font-size: 12px; color: #ff1493;" onclick="toggleAuth()">Don't have an account? Sign Up</p>
+</div>
+
+<div id="chatSection" class="box">
+    <div id="header-chat" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+        <h3 id="chatTitle" style="margin: 0; color: #ff1493;">Chat</h3>
+        <button onclick="logout()" style="width: 70px; padding: 5px; font-size: 12px;">Logout</button>
+    </div>
+    
+    <div id="messages"></div>
+    <select id="userSelector" style="display:none; margin-bottom: 4px;"></select>
+    
+    <div id="videoPreviewContainer">
+        <button class="wa-cancel-btn" id="cancelVideoBtn">✕</button>
+        <video id="videoPreview" controls></video>
+        <button class="wa-send-btn" id="confirmSendBtn">Send Video</button>
+    </div>
+    
+    <div class="chat-footer">
+        <input type="file" id="imgInput" accept="image/*" style="display:none;" onchange="sendImage()">
+        <input type="file" id="videoInput" accept="video/*" style="display: none;">
+        
+        <input type="text" id="msgInput" placeholder="Message...">
+        
+        <button type="button" class="icon-btn" onclick="document.getElementById('imgInput').click()" title="Send Photo">📷</button>
+        <button type="button" class="icon-btn" onclick="document.getElementById('videoInput').click()" title="Send Video">📹</button>
+        
+        <button onclick="sendMessage()" style="width: 60px; margin: 0; border-radius: 20px;">Send</button>
+    </div>
+</div>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.0.0/firebase-app.js";
+    import { getDatabase, ref, push, onChildAdded, onValue, set, get, child } from "https://www.gstatic.com/firebasejs/9.0.0/firebase-database.js";
+
+    const db = getDatabase(initializeApp({ databaseURL: "https://chat-with-vipul-default-rtdb.firebaseio.com" }));
+    let currentUser = localStorage.getItem("user");
+    let isLoginMode = true;
+    const ADMIN_NAME = "Vipul";
+    const displayedMessages = new Set();
+    let selectedVideoFile = null;
+
+    window.toggleAuth = () => {
+        isLoginMode = !isLoginMode;
+        document.getElementById("authTitle").innerText = isLoginMode ? "Login" : "Sign Up";
+        document.getElementById("authBtn").innerText = isLoginMode ? "Enter Chat" : "Create Account";
+        document.getElementById("toggleText").innerText = isLoginMode ? "Don't have an account? Sign Up" : "Already have an account? Login";
+    };
+
+    window.handleAuth = () => {
+        const u = document.getElementById("username").value.trim();
+        const p = document.getElementById("password").value.trim();
+        if (!u || !p) { alert("Please fill in both fields!"); return; }
+
+        if (isLoginMode) {
+            if (u === "Vipul" && p === "Vipul123") { currentUser = ADMIN_NAME; completeLogin(); }
+            else { get(child(ref(db), `users/${u}`)).then((s) => { if (s.exists() && s.val().password === p) { currentUser = u; completeLogin(); } else { alert("Invalid!"); } }); }
+        } else {
+            set(ref(db, 'users/' + u), { name: u, password: p }).then(() => { alert("Created!"); toggleAuth(); });
+        }
+    };
+
+    function completeLogin() {
+        localStorage.setItem("user", currentUser);
+        document.getElementById("authBox").style.display = "none";
+        document.getElementById("chatSection").style.display = "flex";
+        startChat();
+    }
+
+    function startChat() {
+        document.getElementById("chatTitle").innerText = "Hi, " + currentUser;
+        if(currentUser === ADMIN_NAME) {
+            document.getElementById("userSelector").style.display = "block";
+            onValue(ref(db, 'users/'), (snapshot) => {
+                const sel = document.getElementById("userSelector");
+                sel.innerHTML = '<option value="">-- Select User --</option>';
+                snapshot.forEach(childSnap => {
+                    const name = childSnap.val().name;
+                    if(name && name !== ADMIN_NAME) {
+                        const opt = document.createElement("option");
+                        opt.value = name; opt.innerText = name;
+                        sel.appendChild(opt);
+                    }
+                });
+            });
+        }
+        
+        onChildAdded(ref(db, 'messages/'), (snapshot) => {
+            const data = snapshot.val();
+            const id = snapshot.key;
+            if (displayedMessages.has(id)) return;
+            if (currentUser === ADMIN_NAME || data.sender === currentUser || data.receiver === currentUser) {
+                const div = document.createElement("div");
+                div.className = `msg-container ${(data.sender === currentUser) ? "sent" : "received"}`;
+                
+                let mediaHtml = '';
+                if (data.image) mediaHtml += `<img src="${data.image}">`;
+                if (data.video) mediaHtml += `<video src="${data.video}" controls></video>`;
+
+                div.innerHTML = `<div class="msg-info">${data.sender}</div>${data.text ? '<div>' + data.text + '</div>' : ''}${mediaHtml}<div style="font-size:9px; text-align:right; margin-top:3px; opacity:0.7;">${data.time || ''}</div>`;
+                document.getElementById("messages").appendChild(div);
+                displayedMessages.add(id);
+                document.getElementById("messages").scrollTop = document.getElementById("messages").scrollHeight;
+            }
+        });
+    }
+
+    window.sendMessage = () => {
+        const msg = document.getElementById("msgInput").value.trim();
+        const receiver = (currentUser === ADMIN_NAME) ? document.getElementById("userSelector").value : ADMIN_NAME;
+        if(!msg || (currentUser === ADMIN_NAME && !receiver)) { alert("Select user/msg empty!"); return; }
+        push(ref(db, 'messages/'), { text: msg, sender: currentUser, receiver: receiver, time: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) });
+        document.getElementById("msgInput").value = "";
+    };
+
+    window.sendImage = () => {
+        const fileInput = document.getElementById('imgInput');
+        const file = fileInput.files[0];
+        if (!file) return;
+
+        const receiver = (currentUser === ADMIN_NAME) ? document.getElementById("userSelector").value : ADMIN_NAME;
+        if (currentUser === ADMIN_NAME && !receiver) { 
+            alert("Select user first!"); 
+            fileInput.value = "";
+            return; 
+        }
+
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            push(ref(db, 'messages/'), { 
+                image: e.target.result, 
+                sender: currentUser, 
+                receiver: receiver, 
+                time: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) 
+            });
+            fileInput.value = "";
+        };
+        reader.readAsDataURL(file);
+    };
+
+    const videoInput = document.getElementById('videoInput');
+    const videoPreviewContainer = document.getElementById('videoPreviewContainer');
+    const videoPreview = document.getElementById('videoPreview');
+    const confirmSendBtn = document.getElementById('confirmSendBtn');
+    const cancelVideoBtn = document.getElementById('cancelVideoBtn');
+
+    videoInput.addEventListener('change', (e) => {
+        selectedVideoFile = e.target.files[0];
+        const receiver = (currentUser === ADMIN_NAME) ? document.getElementById("userSelector").value : ADMIN_NAME;
+        if (currentUser === ADMIN_NAME && !receiver) {
+            alert("Please select a user first before selecting a video!");
+            videoInput.value = "";
+            return;
+        }
+
+        if (selectedVideoFile) {
+            const fileURL = URL.createObjectURL(selectedVideoFile);
+            videoPreview.src = fileURL;
+            videoPreviewContainer.style.display = 'block';
+        }
+    });
+
+    confirmSendBtn.addEventListener('click', () => {
+        if (!selectedVideoFile) return;
+
+        const receiver = (currentUser === ADMIN_NAME) ? document.getElementById("userSelector").value : ADMIN_NAME;
+        confirmSendBtn.innerText = "Sending...";
+        confirmSendBtn.disabled = true;
+
+        const CLOUD_NAME = "fmr7awgf";
+        const UPLOAD_PRESET = "vipul storage";
+
+        const formData = new FormData();
+        formData.append("file", selectedVideoFile);
+        formData.append("upload_preset", UPLOAD_PRESET);
+
+        fetch(`https://api.cloudinary.com/v1_1/${CLOUD_NAME}/video/upload`, {
+            method: "POST",
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.secure_url) {
+                push(ref(db, 'messages/'), {
+                    video: data.secure_url,
+                    sender: currentUser,
+                    receiver: receiver,
+                    time: new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})
+                });
+                resetVideoForm();
+            } else {
+                alert("Upload failed. Check Cloudinary preset.");
+                resetVideoForm();
+            }
+        })
+        .catch(error => {
+            console.error("Error:", error);
+            alert("Network error during video upload.");
+            resetVideoForm();
+        });
+    });
+
+    cancelVideoBtn.addEventListener('click', () => {
+        resetVideoForm();
+    });
+
+    function resetVideoForm() {
+        selectedVideoFile = null;
+        videoInput.value = "";
+        videoPreview.src = "";
+        videoPreviewContainer.style.display = 'none';
+        confirmSendBtn.innerText = "Send Video";
+        confirmSendBtn.disabled = false;
+    }
+
+    window.logout = () => { localStorage.removeItem("user"); location.reload(); };
+    window.onload = () => { if(currentUser) completeLogin(); };
+</script>
+</body>
+</html>
